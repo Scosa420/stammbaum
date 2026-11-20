@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stammbaum – Emote-Kreaturen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#1b1424;--panel:#271d35;--line:#3d2f52;--txt:#f3eefa;--dim:#b9a9d6;--gold:#ffc93c;--green:#5fd068;--pink:#ff7fd1}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--txt);font-family:'Press Start 2P',monospace}
+  body{background-image:radial-gradient(#2a2040 1px,transparent 1px);background-size:8px 8px}
+  canvas{image-rendering:pixelated;display:block}
+  .wrap{max-width:980px;margin:0 auto;padding:28px 16px 60px}
+  header{text-align:center;margin-bottom:28px}
+  h1{color:var(--gold);font-size:26px;margin:0 0 14px;text-shadow:4px 4px 0 #000}
+  .sub{color:var(--dim);font-size:10px;line-height:1.8}
+  .sub a{color:var(--txt)}
+  .px-box{background:var(--panel);border:4px solid #fff;box-shadow:6px 6px 0 #000}
+  .now{display:flex;gap:24px;align-items:center;padding:20px;margin-bottom:22px;flex-wrap:wrap;justify-content:center}
+  .now .tag{color:var(--green);font-size:10px;margin-bottom:12px}
+  .now h2{font-size:18px;margin:0 0 14px}
+  .info{font-size:9px;line-height:2.1;color:var(--dim)}
+  .info b{color:var(--txt);font-weight:normal}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:26px}
+  .stat{padding:12px 8px;text-align:center}
+  .stat .n{font-size:16px;color:var(--gold);margin-bottom:8px}
+  .stat .l{font-size:7px;color:var(--dim)}
+  .bar{display:flex;gap:8px;justify-content:center;margin-bottom:18px;flex-wrap:wrap}
+  .bar button{font:9px 'Press Start 2P',monospace;background:var(--panel);color:var(--txt);border:3px solid var(--line);padding:9px 12px;cursor:pointer}
+  .bar button.on{border-color:var(--gold);color:var(--gold)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px}
+  .card{background:var(--panel);border:3px solid var(--line);padding:10px;cursor:pointer;text-align:center;position:relative;transition:transform .1s}
+  .card:hover{transform:translateY(-3px);border-color:#fff}
+  .card.shiny{border-color:var(--gold)}
+  .card canvas{margin:0 auto 8px}
+  .card .g{font-size:7px;color:var(--gold);margin-bottom:7px}
+  .card .nm{font-size:9px;margin-bottom:7px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .card .e{font-size:7px;color:var(--dim)}
+  .badges{position:absolute;top:6px;right:6px;display:flex;gap:4px}
+  .badge{font-family:system-ui,sans-serif;font-size:10px;line-height:1;padding:3px 4px;background:#000;border:2px solid var(--gold);color:var(--gold)}
+  .badge.m{border-color:var(--pink);color:var(--pink)}
+  .empty{text-align:center;color:var(--dim);font-size:10px;line-height:2;padding:30px}
+  .modal{position:fixed;inset:0;background:rgba(10,6,16,.85);display:none;align-items:center;justify-content:center;padding:16px;z-index:5}
+  .modal.on{display:flex}
+  .modal .px-box{max-width:640px;width:100%;padding:20px;display:flex;gap:20px;flex-wrap:wrap;justify-content:center;max-height:92vh;overflow:auto;position:relative}
+  .modal h3{font-size:16px;margin:0 0 12px}
+  .close{position:absolute;top:8px;right:10px;background:none;border:0;color:#fff;font:14px 'Press Start 2P';cursor:pointer}
+  .traits{display:grid;grid-template-columns:auto auto;gap:6px 14px;font-size:8px;margin-top:12px}
+  .traits span:nth-child(odd){color:var(--dim)}
+  footer{text-align:center;margin-top:36px;font-size:8px;color:var(--dim);line-height:2}
+  footer a{color:var(--gold)}
+  @media (max-width:560px){ h1{font-size:18px} .stats{grid-template-columns:repeat(2,1fr)} .grid{grid-template-columns:repeat(2,1fr)} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><h1>STAMMBAUM</h1><div class="sub" id="sub">lädt…</div></header>
+  <div class="now px-box" id="now" style="display:none">
+    <canvas id="cv"></canvas>
+    <div><div class="tag">LEBT GERADE</div><h2 id="nowName"></h2><div class="info" id="nowInfo"></div></div>
+  </div>
+  <div class="stats" id="stats"></div>
+  <div class="bar" id="filters">
+    <button data-f="all" class="on">Alle</button><button data-f="shiny">★ Schillernd</button><button data-f="mut">Mutiert</button><button data-f="old">Älteste zuerst</button>
+  </div>
+  <div class="grid" id="grid"></div>
+  <footer id="foot"></footer>
+</div>
+<div class="modal" id="modal"><div class="px-box" id="mbox"></div></div>
+<script>
+(() => {
+'use strict';
+const CONFIG = { channel: 'scroplex', scale: 4, stages: [0, 40, 250, 1000, 3000], stageNames: ['Ei', 'Larve', 'Jungtier', 'Ausgewachsen', 'Endform'] };
+const W = 48, H = 48, SC = CONFIG.scale;
+let S = { total: 0 }, evo = null, shown = 0;
+/* ======================= GENE & EMOTES ======================= */
+const GENES = {
+  hype:   { label: 'Hype',   color: '#ffc93c', hue: 45 },
+  lach:   { label: 'Lachen', color: '#5fd068', hue: 125 },
+  trauer: { label: 'Trauer', color: '#4f9dff', hue: 212 },
+  wut:    { label: 'Wut',    color: '#ff5a4f', hue: 4 },
+  liebe:  { label: 'Liebe',  color: '#ff7fd1', hue: 318 },
+};
+const GENE_KEYS = Object.keys(GENES);
+const EMOTE_GENES = {
+  hype:   ['Pog','PogChamp','POGGERS','PogU','POGGIES','PagMan','PagChomp','PogBones','HYPERS','EZ','Clap','GIGACHAD','Kreygasm','SeemsGood','CurseLit','catJAM','peepoClap','PowerUpL','PowerUpR','TwitchLit','pepeJAM','LETSGO','POGSLIDE','GoldPLZ'],
+  lach:   ['KEKW','LUL','LULW','OMEGALUL','Kappa','4Head','haHAA','ICANT','xdd','KEK','KEKL','Jebaited','pepeLaugh','EleGiggle','LuL','xD','XD','DinoDance','Clueless'],
+  trauer: ['Sadge','BibleThump','PepeHands','FeelsBadMan','F','o7','NotLikeThis','monkaS','Copium','Hopium','peepoSad','widepeepoSad','PoroSad','Deadge','Aware','Waiting','sadKEK'],
+  wut:    ['SwiftRage','DansGame','WeirdChamp','Madge','BabyRage','SMOrc','FailFish','Stare','ANGERY','REEEE','pepeMeltdown','Susge','MrDestructoid','ResidentSleeper'],
+  liebe:  ['<3','peepoHappy','widepeepoHappy','VirtualHug','bleedPurple','HeyGuys','KappaPride','TwitchUnity','peepoLove','FeelsGoodMan','FeelsStrongMan','PETTHEPEEPO','catKISS','ppHug','HUGGIES','peepoShy','AYAYA','GivePLZ','TakeNRG','VoHiYo','pepeLove'],
+};
+const GENE_OF = {};
+for (const g of GENE_KEYS) for (const n of EMOTE_GENES[g]) GENE_OF[n] = g;
+const FALLBACK = new Set(Object.keys(GENE_OF));
+
+/* ======================= KÖRPERTEIL-BAUKASTEN ======================= */
+// Jede Option hat eine "Vorliebe" für bestimmte Gene. Bei jeder Entwicklung gewinnt die Option,
+// die am besten zu den Emotes der letzten Phase passt (plus etwas Zufall, je Kanal & Generation anders).
+const PARTS = {
+  body:    { rund: { lach: .8, liebe: .4 }, gross: { hype: .9 }, breit: { wut: .9, lach: .2 }, birne: { trauer: .9 }, mochi: { liebe: .9, trauer: .2 },
+             tropfen: { trauer: .6, liebe: .4 }, eckig: { wut: .6, hype: .4 }, ei: { lach: .55, hype: .3 }, pilz: { lach: .5, liebe: .3, _u: .8 }, geisterform: { trauer: .7, _u: .6 } },
+  top:     { none: { _: .18 }, katze: { liebe: .6, lach: .3 }, hase: { trauer: .55, liebe: .35 }, hoerner: { wut: .9 }, kamm: { wut: .45, hype: .45 }, antennen: { hype: .85 },
+             spross: { lach: .65, liebe: .2 }, flamme: { hype: .5, wut: .5 }, einhorn: { liebe: .55, hype: .45 }, baer: { liebe: .5, lach: .4 }, teufel: { wut: .7, lach: .2 },
+             geweih: { trauer: .45, wut: .45 }, haarbuschel: { lach: .7 }, blume: { liebe: .7, lach: .2 }, flossen: { trauer: .75 }, stacheln: { wut: .6, hype: .3 } },
+  eyes:    { punkt: { lach: .45, _: .15 }, gross: { liebe: .7, hype: .2 }, muede: { trauer: .85 }, boese: { wut: .9 }, sterne: { hype: .8 },
+             herz: { liebe: .8 }, kreuz: { lach: .6, trauer: .2 }, schlitz: { wut: .6, hype: .3 }, glubsch: { lach: .5, hype: .4 }, oval: { trauer: .5, liebe: .4 } },
+  mouth:   { laecheln: { lach: .9 }, zaehne: { wut: .85 }, traurig: { trauer: .85 }, offen: { hype: .8 }, katze: { liebe: .85 },
+             zunge: { lach: .6, hype: .3 }, grinsen: { hype: .55, wut: .4 }, o: { trauer: .5, hype: .3 }, schnabel: { hype: .5, lach: .3 }, fangzahn: { wut: .5, liebe: .4 } },
+  pattern: { none: { _: .2 }, punkte: { lach: .45, _u: 1.2 }, streifen: { wut: .5, hype: .3 }, bauch: { liebe: .55 }, zweiton: { trauer: .55 }, sterne: { hype: .45, liebe: .1 },
+             herzen: { liebe: .65 }, karo: { lach: .5, _u: .6 }, blitz: { hype: .6, wut: .3 }, kuh: { lach: .4, trauer: .3 }, maske: { wut: .4, trauer: .4 }, ringel: { hype: .3, lach: .3, _u: .6 } },
+  tail:    { none: { _: .2 }, stummel: { lach: .45 }, locke: { liebe: .6 }, stachel: { wut: .75 }, flamme: { hype: .7 }, tropfen: { trauer: .7 },
+             fisch: { trauer: .6, _u: .6 }, buschig: { liebe: .55, lach: .25 }, blitz: { hype: .65 }, keule: { wut: .65 }, katze: { lach: .4, liebe: .4 }, pinsel: { lach: .5, trauer: .2 } },
+  arms:    { stummel: { lach: .45, liebe: .35 }, krallen: { wut: .85 }, fluegelchen: { hype: .6, liebe: .2 }, lang: { trauer: .75 },
+             scheren: { wut: .55, _u: .8 }, flossen: { trauer: .55, _u: .5 }, winken: { lach: .5, liebe: .45 }, muskel: { hype: .55, wut: .45 } },
+  extra:   { fluegel: { hype: .75 }, heiligenschein: { liebe: .85 }, krone: { lach: .6, hype: .25 }, wolke: { trauer: .9 }, aura: { wut: .9 },
+             blitzaura: { hype: .7, wut: .2 }, herzorbit: { liebe: .7, lach: .2 }, zauberhut: { lach: .45, trauer: .4 }, schmetterling: { liebe: .5, lach: .4 }, drachenfluegel: { wut: .65, trauer: .25 } },
+  scheme:  { normal: { _: .25 }, analog: { trauer: .4, liebe: .3 }, komplementaer: { wut: .45, lach: .35 }, pastell: { liebe: .6, trauer: .2 }, neon: { hype: .7 },
+             dunkel: { wut: .4, trauer: .45 }, verlauf: { liebe: .4, lach: .35 }, spitzen: { lach: .35, wut: .35 }, metallic: { hype: .45, wut: .35 }, halbiert: { _u: 1.2, lach: .15 } },
+};
+const SLOT_STAGE = { body: 1, eyes: 1, mouth: 1, top: 1, pattern: 1, scheme: 1, tail: 2, arms: 3, extra: 4 };
+const MUTATIONS = {
+  regenbogen:  'Regenbogen',
+  gold:        'Goldglanz',
+  schatten:    'Schattenwesen',
+  geist:       'Geisterhaft',
+  drittesauge: 'Drittes Auge',
+  zyklop:      'Zyklop',
+};
+
+
+/* ======================= HILFSFUNKTIONEN ======================= */
+const now = () => performance.now() / 1000;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const $ = id => document.getElementById(id);
+const esc = x => String(x).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function hash(s){ let h = 2166136261; for (let i = 0; i < s.length; i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+function rng(seed){ let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = (t + Math.imul(t ^ t >>> 7, 61 | t)) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function rgbOf(c){ if (Array.isArray(c)) return c; const n = parseInt(c.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+function mix(c, f){ return rgbOf(c).map(v => Math.round(f < 0 ? v * (1 + f) : v + (255 - v) * f)); }
+function css(c){ c = rgbOf(c); return `rgb(${c[0]},${c[1]},${c[2]})`; }
+function hsl(h, s, l){ h = ((h % 360) + 360) % 360; s /= 100; l /= 100; const k = n => (n + h / 30) % 12; const a = s * Math.min(l, 1 - l); const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1))); return [Math.round(f(0) * 255), Math.round(f(8) * 255), Math.round(f(4) * 255)]; }
+function palOf(c){ return { base: css(c), light: css(mix(c, .35)), dark: css(mix(c, -.3)) }; }
+const zeroGenes = () => ({ hype: 0, lach: 0, trauer: 0, wut: 0, liebe: 0 });
+function shares(genes){ const tot = GENE_KEYS.reduce((a, k) => a + (genes[k] || 0), 0); const s = {}; GENE_KEYS.forEach(k => s[k] = tot ? genes[k] / tot : 0); return { s, tot }; }
+function sortedGenes(genes){ return GENE_KEYS.slice().sort((a, b) => genes[b] - genes[a]); }
+const SEED = hash(CONFIG.channel);
+
+
+/* ======================= PIXEL-RENDERER ======================= */
+const cv = $('cv'); cv.width = W * SC; cv.height = H * SC;
+const ctx = cv.getContext('2d'); ctx.imageSmoothingEnabled = false;
+const lo = document.createElement('canvas'); lo.width = W; lo.height = H;
+const lx = lo.getContext('2d');
+const ghost = document.createElement('canvas'); ghost.width = W; ghost.height = H;
+const M = new Uint8Array(W * H);
+const OUT = '#1b1424';
+const RAINBOW = ['#ff5a4f', '#ff9f3c', '#ffd84a', '#5fd068', '#4f9dff', '#b07cff'];
+
+function mset(x, y, v, only){ x = Math.round(x); y = Math.round(y); if (x < 0 || y < 0 || x >= W || y >= H) return; const i = y * W + x; if (only !== undefined && M[i] !== only) return; M[i] = v; }
+function mget(x, y){ return (x < 0 || y < 0 || x >= W || y >= H) ? 0 : M[y * W + x]; }
+function ell(cx, cy, rx, ry, v, only, shear = 0, py = cy, n = 2){
+  for (let y = Math.floor(cy - ry) - 1; y <= Math.ceil(cy + ry) + 1; y++){
+    const s = Math.round(shear * (py - y));
+    for (let x = Math.floor(cx - rx) - 1; x <= Math.ceil(cx + rx) + 1; x++){
+      const dx = Math.abs((x + .5 - cx) / rx), dy = Math.abs((y + .5 - cy) / ry);
+      if (Math.pow(dx, n) + Math.pow(dy, n) <= 1) mset(x + s, y, v, only);
+    }
+  }
+}
+function tri(ax, ay, bx, by, qx, qy, v, only){
+  const minX = Math.floor(Math.min(ax, bx, qx)), maxX = Math.ceil(Math.max(ax, bx, qx));
+  const minY = Math.floor(Math.min(ay, by, qy)), maxY = Math.ceil(Math.max(ay, by, qy));
+  const d = (bx - ax) * (qy - ay) - (by - ay) * (qx - ax); if (!d) return;
+  for (let y = minY; y <= maxY; y++) for (let x = minX; x <= maxX; x++){
+    const px_ = x + .5, py_ = y + .5;
+    const w1 = ((bx - px_) * (qy - py_) - (by - py_) * (qx - px_)) / d;
+    const w2 = ((qx - px_) * (ay - py_) - (qy - py_) * (ax - px_)) / d;
+    const w3 = 1 - w1 - w2;
+    if (w1 >= -.02 && w2 >= -.02 && w3 >= -.02) mset(x, y, v, only);
+  }
+}
+function spike(x, y, w, h, v){ for (let i = 0; i < h; i++){ const ww = Math.max(1, Math.round(w * (1 - i / h))); const x0 = Math.round(x - ww / 2); for (let k = 0; k < ww; k++) mset(x0 + k, y - i, v); } }
+function px(x, y, c){ lx.fillStyle = c; lx.fillRect(Math.round(x), Math.round(y), 1, 1); }
+function rect(x, y, w, h, c){ lx.fillStyle = c; lx.fillRect(Math.round(x), Math.round(y), w, h); }
+function edge(x, y){ return mget(x, y) && (!mget(x - 1, y) || !mget(x + 1, y) || !mget(x, y - 1) || !mget(x, y + 1)); }
+function paint(pal){
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++){
+    const v = M[y * W + x]; if (!v) continue;
+    if (edge(x, y)){ px(x, y, OUT); continue; }
+    const p = pal[v] || pal[1]; let c = p.base;
+    if (edge(x + 1, y) || edge(x, y + 1) || edge(x + 1, y + 1)) c = p.dark;
+    else if (edge(x - 1, y) || edge(x, y - 1)) c = p.light;
+    px(x, y, c);
+  }
+}
+function topY(x){ x = Math.round(x); for (let y = 0; y < H; y++) if (mget(x, y)) return y; return H; }
+const HEART = ['.X.X.', 'XXXXX', 'XXXXX', '.XXX.', '..X..'];
+function sprite(pat, x, y, c){ pat.forEach((row, j) => [...row].forEach((ch, i) => { if (ch === 'X') px(x + i, y + j, c); })); }
+function sprite2(pat, x, y, map){ pat.forEach((row, j) => [...row].forEach((ch, i) => { if (map[ch]) px(x + i, y + j, map[ch]); })); }
+const CLOUD = ['....oooo.......', '..oowwwwoooo....', '.owwwwwwwwwwo...', 'owwwwwwwwwwwwoo.', 'owwwwwwwwwwwwwwo', 'owggwwwwwwwwggwo', '.oogggggggggggo.', '...oooooooooo...'];
+const CROWN = ['.o...o...o.', 'oyo.oyo.oyo', 'oyyoyyyoyyo', 'oyyyyyyyyyo', 'oyryyyyyryo', 'ooooooooooo'];
+
+/* ---------- Animation & Partikel ---------- */
+let reactState = null, wobble = 0, blinkUntil = 0, nextBlink = now() + 2, flashKick = 0;
+const parts = [];
+function spawn(kind, x, y, vx, vy, life, color){ if (parts.length < 90) parts.push({ kind, x, y, vx, vy, life, max: life, color }); }
+function react(g){
+  reactState = { type: g, t0: now(), dur: g === 'hype' ? .5 : .6 };
+  wobble = 1;
+  const c = GENES[g].color, cx = 24, cy = shown === 0 ? 22 : 24;
+  if (g === 'liebe') for (let i = 0; i < 2; i++) spawn('heart', cx - 6 + Math.random() * 10, cy - 4, (Math.random() - .5) * 4, -10, 1.3, c);
+  else if (g === 'wut') spawn('bang', cx + 9, cy - 10, 0, -4, .7, c);
+  else for (let i = 0; i < 5; i++) spawn('pix', cx + (Math.random() - .5) * 14, cy - 6, (Math.random() - .5) * 16, -8 - Math.random() * 10, .7, c);
+}
+function burst(fromEgg){
+  if (fromEgg) for (let i = 0; i < 14; i++){ const a = Math.random() * Math.PI * 2; spawn('shard', 24, 30, Math.cos(a) * 22, Math.sin(a) * 22 - 12, 1.1, '#f4ecd8'); }
+  for (let i = 0; i < 16; i++){ const a = Math.random() * Math.PI * 2; spawn('spark', 24, 30, Math.cos(a) * 18, Math.sin(a) * 18, .9, '#fff6c2'); }
+}
+
+/* ---------- Ei ---------- */
+function drawEgg(t, ph, ox, oy, A = {}){
+  const R = rng(ph.seed);
+  const cx = 24 + ox, rx = 9 + R() * 1.6, ry = 11.5 + R() * 1.6, cy = 44 - ry + oy, py = cy + ry;
+  const variant = Math.floor(R() * 3);
+  let shear = A.still ? 0 : (wobble > 0 ? Math.sin(t * 25) * .12 * wobble : Math.sin(t * 1.5) * .03);
+  if (!A.still && evo && evo.type === 'evo') shear = Math.sin(t * 40) * .22 * Math.min(1, (t - evo.t0) / 1.2);
+  ell(cx, cy, rx, ry, 4, undefined, shear, py);
+  const sh = y => Math.round(shear * (py - y));
+  if (variant !== 1){
+    const n = 3 + Math.floor(R() * 4);
+    for (let i = 0; i < n; i++){
+      const a = R() * Math.PI * 2, d = .25 + R() * .45;
+      const sx = cx + Math.cos(a) * rx * d, sy = cy + Math.sin(a) * ry * d;
+      ell(sx + sh(sy), sy, 1.3 + R() * 1.3, 1.2 + R(), 5, 4);
+    }
+  }
+  if (variant !== 0){
+    const by = cy + ry * (.15 + R() * .2), amp = R() < .5 ? 1 : 0, f = .8 + R() * .8;
+    for (let x = Math.floor(cx - rx - 2); x <= cx + rx + 2; x++) for (let k = 0; k < 2; k++){
+      const y = Math.round(by + amp * Math.sin(x * f) + k); mset(x + sh(y), y, 5, 4);
+    }
+  }
+  const shell = ph.parentHue != null ? hsl(ph.parentHue, 40, 88) : [244, 236, 216];
+  const spots = ph.neutral ? (ph.parentHue != null ? hsl(ph.parentHue, 45, 62) : [203, 189, 159]) : hsl(ph.h, ph.s, ph.l);
+  paint({ 4: palOf(shell), 5: palOf(spots) });
+  // Risse
+  const C = rng(ph.seed ^ 0xabc); const pts = []; let yy = 0;
+  for (let x = -7; x <= 7; x++){ pts.push([x, yy]); if (C() < .55){ yy = clamp(yy + (C() < .5 ? -1 : 1), -2, 2); pts.push([x, yy]); } }
+  const p = Math.min(1, S.total / CONFIG.stages[1]);
+  const n = A.cracks != null ? A.cracks : Math.floor(pts.length * p);
+  for (let i = 0; i < n; i++){
+    const [x, y] = pts[i]; const yv = Math.round(cy - 3 + y), xv = cx + x + sh(yv);
+    if (mget(xv, yv) && !edge(xv, yv)) px(xv, yv, OUT);
+  }
+}
+
+/* ---------- Körperteile ---------- */
+let EXT = 1;   // Region für Gliedmaßen (Farbschema "Spitzen" färbt sie anders)
+const SMALL_HEART = ['X.X', 'XXX', '.X.'];
+const ZHAT = ['.....o.....', '....opo....', '....opo....', '...oppyo...', '...opppo...', '..oppyppo..', '..opppppo..', '.oppppppppo', 'ooooooooooo'];
+const BODY = { rund: [1, 1], gross: [.82, 1.22], breit: [1.22, .85], birne: [1, 1], mochi: [.98, .98], tropfen: [.95, 1.1], eckig: [.95, .9], ei: [.9, 1.12], pilz: [1, 1.05], geisterform: [.95, 1.05] };
+function line(x0, y0, x1, y1, r, v){ const n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 2)); for (let i = 0; i <= n; i++){ const f = i / n; ell(x0 + (x1 - x0) * f, y0 + (y1 - y0) * f, r, r, v); } }
+function path(pts, r, v){ for (let i = 1; i < pts.length; i++) line(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1], r, v); }
+function mixRGB(a, b, f){ a = rgbOf(a); b = rgbOf(b); return a.map((v, i) => Math.round(v + (b[i] - v) * f)); }
+
+function drawTop(type, cx, yT, rx, sc, t){
+  if (!type || type === 'none') return;
+  for (const s of [-1, 1]){
+    if (type === 'katze'){
+      const x = cx + s * rx * .5;
+      tri(x - 3.5 * sc, yT + 3, x + 3.5 * sc, yT + 3, x + s * sc, yT - 5 * sc, EXT);
+      tri(x - 1.6 * sc, yT + 2, x + 1.6 * sc, yT + 2, x + s * .5 * sc, yT - 2.5 * sc, 2, EXT);
+    } else if (type === 'hase'){
+      const x = cx + s * rx * .32;
+      ell(x, yT - 5 * sc, 2.4 * sc, 6.5 * sc, EXT); ell(x, yT - 5 * sc, 1 * sc, 4.6 * sc, 2, EXT);
+    } else if (type === 'baer'){
+      const x = cx + s * rx * .55; ell(x, yT - .5, 3.4 * sc, 3.4 * sc, EXT); ell(x, yT - .5, 1.6 * sc, 1.6 * sc, 2, EXT);
+    } else if (type === 'hoerner'){
+      for (let i = 0; i < 6; i++) ell(cx + s * (rx * .4 + i * .75 * sc), yT + 1 - i * 1.25 * sc, Math.max(.8, (2.3 - i * .3) * sc), 1.6 * sc, 3);
+    } else if (type === 'teufel'){
+      const x = cx + s * rx * .38; tri(x - 3.6 * sc, yT + 1, x + 3.6 * sc, yT + 1, x + s * 4 * sc, yT - 7.5 * sc, 20);
+    } else if (type === 'geweih'){
+      const b = cx + s * 3;
+      path([[b, yT + 2], [b + s * 2 * sc, yT - 3 * sc], [b + s * 4.5 * sc, yT - 6 * sc]], 1.3, 3);
+      line(b + s * 2 * sc, yT - 3 * sc, b - s * .5, yT - 6.5 * sc, 1.2, 3);
+      line(b + s * 4.5 * sc, yT - 6 * sc, b + s * 7 * sc, yT - 6.5 * sc, 1.2, 3);
+    } else if (type === 'flossen'){
+      tri(cx + s * rx * .55, yT + 3, cx + s * rx * .9, yT + 7, cx + s * (rx + 3 * sc), yT - 3 * sc, 2);
+    } else if (type === 'antennen'){
+      const bx = cx + s * 3 + (s > 0 ? 1 : 0), sway = Math.round(Math.sin(t * 4 + s) * .8);
+      const h = Math.round(5 * sc);
+      for (let k = 0; k < h; k++) mset(bx + (k > h - 2 ? s + sway : 0), yT + 1 - k, 3);
+      ell(bx + s + sway + .5, yT - h - .5, 2.2, 2.2, 7);
+    }
+  }
+  if (type === 'kamm'){ const n = rx > 11 ? 4 : 3; for (let i = 0; i < n; i++) spike(cx + (i - (n - 1) / 2) * 3.2 * sc, yT + 3, 3.2, Math.round(5 * sc), 5); }
+  else if (type === 'spross'){ for (let k = 0; k < 4; k++) mset(cx, yT + 1 - k, 9); ell(cx - 2.5, yT - 4, 2.7, 1.5, 9); ell(cx + 3, yT - 5, 2.7, 1.5, 9); }
+  else if (type === 'flamme'){ const f = Math.sin(t * 12); ell(cx, yT, 4 * sc, 3.5 * sc, 7); ell(cx + f * .7, yT - 4 * sc, 2.8 * sc, 3.2 * sc, 7); ell(cx - f * .6, yT - 7.5 * sc, 1.5 * sc, 2 * sc, 7); }
+  else if (type === 'einhorn'){ tri(cx - 4.2 * sc, yT + 1, cx + 3.8 * sc, yT + 1, cx, yT - 11 * sc, 8); for (let k = 0; k < 4; k++) mset(cx - 1 + (k % 2), yT - 1 - k * 2.4 * sc, 19, 8); }
+  else if (type === 'haarbuschel'){ for (const k of [-1, 0, 1]) path([[cx + k * 2, yT + 3], [cx + k * 3, yT - 2 * sc], [cx + k * 4.5 + 1, yT - 4.5 * sc]], 1.1, 5); }
+  else if (type === 'blume'){ for (let k = 0; k < 4; k++) mset(cx + 1, yT + 1 - k, 9); const fx = cx + 1, fy = yT - 5 * sc; for (const [a, b] of [[-2, 0], [2, 0], [0, -2], [0, 2]]) ell(fx + a, fy + b, 1.8, 1.8, 21); ell(fx, fy, 1.3, 1.3, 8); }
+  else if (type === 'stacheln'){ for (let i = 0; i < 7; i++){ const k = i - 3, x = cx + k * rx * .26, base = yT + 2 + Math.abs(k) * 1.3; tri(x - 1.7, base + 1, x + 1.7, base + 1, x + k * 1.1, base - 5 * sc, 5); } }
+}
+function drawTail(type, x, y, sc, t){
+  if (!type || type === 'none') return;
+  const wag = Math.round(Math.sin(t * 4));
+  if (type === 'stummel') ell(x - 1, y + wag * .5, 3 * sc, 2.6 * sc, EXT);
+  else if (type === 'locke'){ ell(x - 3 * sc, y - 2, 3.6 * sc, 3.6 * sc, EXT); ell(x - 3 * sc, y - 2, 1.4 * sc, 1.4 * sc, 0); ell(x - 1, y + 1, 2, 1.6, EXT); }
+  else if (type === 'stachel') tri(x + 2, y - 3 * sc, x + 2, y + 3 * sc, x - 8 * sc, y - 1 + wag, 5);
+  else if (type === 'flamme'){ const f = Math.sin(t * 12); ell(x - 2, y, 3.2 * sc, 2.2, EXT); ell(x - 6 * sc, y - 2 + f * .5, 2.6 * sc, 3 * sc, 7); ell(x - 7 * sc, y - 5 * sc, 1.4, 1.8, 7); }
+  else if (type === 'tropfen'){ ell(x - 3 * sc, y + 1, 3 * sc, 3 * sc, 2); tri(x - 5.9 * sc, y, x - .1 * sc, y, x - 6.5 * sc, y - 6.5 * sc + wag, 2); }
+  else if (type === 'fisch'){ ell(x - 1, y, 2.4, 2, EXT); tri(x, y, x - 7 * sc, y - 4.5 * sc + wag, x - 7 * sc, y + 4.5 * sc + wag, 2); }
+  else if (type === 'buschig'){ ell(x - 4 * sc, y - 2 + wag * .5, 4.6 * sc, 3.2 * sc, EXT); ell(x - 7.5 * sc, y - 3.5 * sc + wag * .5, 2.2 * sc, 2 * sc, 22); }
+  else if (type === 'blitz') path([[x + 1, y], [x - 3 * sc, y - 3 * sc], [x - 1 * sc, y - 5 * sc], [x - 5 * sc, y - 9 * sc + wag]], 1.4, 8);
+  else if (type === 'keule'){ line(x + 1, y, x - 6 * sc, y - 1, 1.5, EXT); ell(x - 7.5 * sc, y - 1 + wag * .5, 2.8 * sc, 2.6 * sc, 3); }
+  else if (type === 'katze') path([[x + 1, y], [x - 4 * sc, y - 1], [x - 6.5 * sc, y - 4 * sc], [x - 6 * sc + wag, y - 8 * sc]], 1.5, EXT);
+  else if (type === 'pinsel'){ line(x + 1, y, x - 6 * sc, y + 1, 1.3, EXT); ell(x - 7.8 * sc, y + 1 + wag * .5, 2.4 * sc, 2 * sc, 5); }
+}
+function drawArms(type, cx, cy, rx, ry, t){
+  for (const s of [-1, 1]){
+    const ax = cx + s * (rx + .5), ay = cy + ry * .15;
+    if (type === 'stummel') ell(ax, ay, 3, 4.5, EXT);
+    else if (type === 'krallen'){ ell(ax, ay, 3.2, 4.5, EXT); for (let k = -1; k <= 1; k++){ mset(ax + k * 1.2, ay + 4.5, 3); mset(ax + k * 1.2, ay + 5.5, 3); } }
+    else if (type === 'fluegelchen'){ const f = Math.round(Math.sin(t * 9 + s)); tri(cx + s * (rx - 2), cy - 3, cx + s * (rx - 2), cy + 4, cx + s * (rx + 7), cy - 6 + f, 6); }
+    else if (type === 'lang') ell(ax, cy + ry * .38, 2.4, 7, EXT);
+    else if (type === 'scheren'){ ell(ax, ay, 2.8, 3.6, EXT); ell(ax + s * 1.4, ay + 4.8, 3, 2.8, EXT); mset(ax + s * 1.4, ay + 4.5, 0); mset(ax + s * 1.4, ay + 5.5, 0); mset(ax + s * 1.4, ay + 6.5, 0); }
+    else if (type === 'flossen') tri(ax - s * 1, cy - 1, ax - s * 1, cy + 5, ax + s * 5.5, cy + 7, 2);
+    else if (type === 'winken'){ if (s < 0) ell(ax, ay, 3, 4.5, EXT); else { const w = Math.round(Math.sin(t * 7)); ell(ax + 1.5 + w * .6, cy - ry * .45, 2.6, 4.6, EXT); } }
+    else if (type === 'muskel'){ ell(ax + s * 1.8, cy + ry * .2, 4.2, 5.4, EXT); ell(ax + s * 2.6, cy - ry * .02, 3.2, 2.8, EXT); }
+  }
+}
+function drawBody(body, cx, cy, rx, ry, gy, t){
+  if (body === 'birne'){ ell(cx, cy + ry * .3, rx * 1.12, ry * .72, 1); ell(cx, cy - ry * .25, rx * .78, ry * .76, 1); }
+  else if (body === 'mochi') ell(cx, cy, rx, ry, 1, undefined, 0, 0, 3);
+  else if (body === 'eckig') ell(cx, cy, rx, ry, 1, undefined, 0, 0, 5);
+  else if (body === 'tropfen'){ ell(cx, cy + ry * .12, rx, ry * .88, 1); tri(cx - rx * .62, cy - ry * .2, cx + rx * .62, cy - ry * .2, cx, cy - ry * 1.12, 1); }
+  else if (body === 'ei'){
+    for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++){
+      const tt = (y + .5 - cy) / ry; if (Math.abs(tt) > 1) continue;
+      const hw = rx * Math.sqrt(1 - tt * tt) * (tt < 0 ? 1 + .32 * tt : 1);
+      for (let x = Math.floor(cx - rx) - 1; x <= cx + rx + 1; x++) if (Math.abs(x + .5 - cx) <= hw) mset(x, y, 1);
+    }
+  }
+  else if (body === 'pilz'){
+    ell(cx, cy + ry * .32, rx * .72, ry * .68, 1);
+    ell(cx, cy - ry * .38, rx * 1.28, ry * .6, 2);
+    for (let i = 0; i < 3; i++) ell(cx + (i - 1) * rx * .62, cy - ry * .52 + (i === 1 ? -1 : 1.5), 1.7, 1.3, 19, 2);
+  }
+  else if (body === 'geisterform'){
+    ell(cx, cy - ry * .15, rx, ry * .85, 1);
+    const ph = Math.floor(t * 3);
+    for (let x = Math.ceil(cx - rx + .5); x <= Math.floor(cx + rx - .5); x++){
+      const bottom = gy - 1 - ((Math.floor((x - cx + rx) / 3) + ph) % 2);
+      for (let y = Math.round(cy - ry * .15); y <= bottom; y++) mset(x, y, 1);
+    }
+  }
+  else ell(cx, cy, rx, ry, 1);
+}
+function drawBackExtras(extra, cx, cy, rx, ry, t, A){
+  const f = A.still ? 0 : Math.sin(t * 6) * 1.5;
+  for (const s of [-1, 1]){
+    if (extra === 'fluegel') ell(cx + s * (rx + 1.5), cy - ry * .45, 5.5, 8 + f, 6);
+    else if (extra === 'schmetterling'){
+      ell(cx + s * (rx + 2.5), cy - ry * .55 - f * .5, 5, 5.5, 6); ell(cx + s * (rx + 1.5), cy + ry * .12, 3.5, 4, 6);
+      ell(cx + s * (rx + 3), cy - ry * .6 - f * .5, 1.7, 1.7, 21, 6);
+    } else if (extra === 'drachenfluegel'){
+      const tipX = cx + s * Math.min(rx + 10, 22), tipY = cy - ry * 1.05 - f;
+      tri(cx + s * rx * .4, cy - ry * .35, tipX, tipY, cx + s * Math.min(rx + 8, 21), cy + ry * .25, 23);
+      line(cx + s * rx * .4, cy - ry * .35, tipX, tipY, 1, 5);
+    }
+  }
+}
+function applyPattern(type, cx, cy, rx, ry, top, seed, face){
+  if (!type || type === 'none') return;
+  const R = rng(seed ^ 0x51ed);
+  const nearFace = (x, y) => Math.abs(y - face.y) < 4 && Math.abs(x - face.x) < 7;
+  const scatter = (n, fn) => { for (let i = 0, tries = 0; i < n && tries < 60; tries++){ const x = Math.round(cx + (R() - .5) * 2 * rx * .85), y = Math.round(cy + (R() - .5) * 2 * ry * .85); if (nearFace(x, y) || mget(x, y) !== 1) continue; fn(x, y); i++; } };
+  if (type === 'punkte') scatter(5, (x, y) => ell(x, y, 1.4, 1.2, 5, 1));
+  else if (type === 'sterne') scatter(3, (x, y) => [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([a, b]) => mset(x + a, y + b, 6, 1)));
+  else if (type === 'herzen') scatter(3, (x, y) => SMALL_HEART.forEach((row, j) => [...row].forEach((ch, i) => { if (ch === 'X') mset(x - 1 + i, y - 1 + j, 21, 1); })));
+  else if (type === 'kuh') scatter(3, (x, y) => ell(x, y, 2.5 + R() * 1.5, 2 + R(), 22, 1));
+  else if (type === 'bauch') ell(cx, cy + ry * .38, rx * .6, ry * .48, 2, 1);
+  else {
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++){
+      const i = y * W + x; if (M[i] !== 1) continue;
+      if (type === 'streifen'){ if (Math.abs(x + .5 - cx) > rx * .5 && y % 3 === 0) M[i] = 5; }
+      else if (type === 'zweiton'){ if (y > cy + ry * .2 + Math.round(Math.sin(x * .9))) M[i] = 2; }
+      else if (type === 'regenbogen') M[i] = 10 + (Math.floor((y - top) / 3) % 6 + 6) % 6;
+      else if (type === 'karo'){ if (y > cy + ry * .1 && ((x >> 1) + (y >> 1)) % 2 === 0) M[i] = 5; }
+      else if (type === 'blitz'){ const z = x % 6, zig = z < 3 ? z : 6 - z, yy = Math.round(cy + ry * .3 - zig); if (y === yy || y === yy + 1) M[i] = 8; }
+      else if (type === 'maske'){ if (y >= face.y - 1 && y <= face.y + 2 && Math.abs(x + .5 - face.x) < rx * .85) M[i] = 22; }
+      else if (type === 'ringel'){ if (y > face.y + 4 && (y - top) % 4 === 0) M[i] = 5; }
+    }
+  }
+}
+function applyScheme(scheme, cx, cy, rx, ry, top, gy){
+  if (scheme !== 'verlauf' && scheme !== 'halbiert' && scheme !== 'metallic') return;
+  const k = Math.round(cx - cy - rx * .35);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++){
+    const i = y * W + x; if (M[i] !== 1) continue;
+    if (scheme === 'verlauf'){ const f = (y - top) / Math.max(1, gy - top); if (f > .72) M[i] = 17; else if (f > .45) M[i] = 16; }
+    else if (scheme === 'halbiert'){ if (x + .5 > cx) M[i] = 2; }
+    else if (scheme === 'metallic'){ if ((x - y === k || x - y === k + 1) && y < cy - ry * .1 && x < cx) M[i] = 19; }
+  }
+}
+
+/* ---------- Kreatur ---------- */
+function drawCreature(t, ph0, st, A){
+  const ph = Object.assign({ body: 'rund', top: 'none', eyes: 'punkt', mouth: 'laecheln', pattern: 'none', tail: 'none', arms: 'stummel', extra: 'fluegel', scheme: 'normal' }, ph0);
+  const muts = ph.muts || [];
+  const cx = 24 + A.ox; let gy = 45 + A.oy;
+  const C1 = hsl(ph.h, ph.s, ph.l), C2 = hsl(ph.h2, Math.max(30, ph.s - 10), Math.min(86, ph.l + 12));
+  const pattern = muts.includes('regenbogen') ? 'regenbogen' : ph.pattern;
+  EXT = ph.scheme === 'spitzen' ? 18 : 1;
+  let face, top, d, rx, ry, cy;
+  const ts = st === 1 ? .6 : st === 2 ? .8 : 1;
+
+  if (st === 1){
+    const nseg = { rund: 3, gross: 4, breit: 3, birne: 2, mochi: 3, tropfen: 3, eckig: 3, ei: 3, pilz: 2, geisterform: 3 }[ph.body] || 3;
+    const sr = { rund: 4.8, gross: 3.6, breit: 5.3, birne: 4.4, mochi: 4.6, tropfen: 4.2, eckig: 4.8, ei: 4.4, pilz: 4, geisterform: 4.2 }[ph.body] || 4.5;
+    const hr = { rund: 6.5, gross: 5.8, breit: 6, birne: 7.6, mochi: 6.5, tropfen: 6.4, eckig: 6.2, ei: 6.4, pilz: 7.2, geisterform: 6.6 }[ph.body] || 6.5;
+    const n = (ph.body === 'mochi' || ph.body === 'eckig') ? 3 : 2;
+    const hx = Math.round(cx + nseg * sr * .55);
+    const hy = gy - hr + A.sq * .5;
+    top = Math.round(hy - hr * .95);
+    drawTop(ph.top, hx, top, hr, ts, t);
+    for (let i = nseg; i >= 1; i--){
+      const x = hx - hr * .55 - i * sr * 1.2, r = sr * (1 - (i - 1) * .08);
+      ell(x, gy - r, r * 1.05, r - A.sq * .4, (i % 2 && pattern !== 'none') ? 2 : 1, undefined, 0, 0, n);
+    }
+    ell(hx, hy, hr, hr * .95 - A.sq * .5, ph.body === 'pilz' ? 2 : 1, undefined, 0, 0, n);
+    if (ph.body === 'pilz') ell(hx, hy + hr * .35, hr * .75, hr * .55, 1, 2);
+    face = { x: hx, y: Math.round(hy - 1 + (ph.body === 'pilz' ? 2 : 0)) }; d = 2; rx = hr; ry = hr; cy = hy;
+    if (['punkte', 'sterne', 'herzen', 'regenbogen'].includes(pattern)) applyPattern(pattern, hx, hy, hr, hr, top, ph.seed, face);
+  } else {
+    const base = st === 2 ? [10.5, 9.5] : [13, 12];
+    const mod = BODY[ph.body] || [1, 1];
+    rx = base[0] * mod[0]; ry = Math.min(base[1] * mod[1], st === 2 ? 12 : 14.5);
+    if (ph.body === 'geisterform' && !A.still) gy -= Math.round(1 + Math.sin(t * 2));
+    cy = gy - 2 - ry + A.sq;
+    top = Math.round(ph.body === 'tropfen' ? cy - ry * 1.12 : cy - ry);
+    const narrow = ph.body === 'pilz' ? rx * .72 : rx;
+    if (st >= 4) drawBackExtras(ph.extra, cx, cy, rx, ry, t, A);
+    drawTail(ph.tail, cx - narrow + 1, cy + ry * .35, ts, t);
+    drawTop(ph.top, cx, top, ph.body === 'tropfen' ? rx * .6 : rx, ts, t);
+    if (ph.body !== 'geisterform'){ const fr = st >= 3 ? 3.8 : 3.2; ell(cx - narrow * .48, gy - 2, fr, 2.3, EXT); ell(cx + narrow * .48, gy - 2, fr, 2.3, EXT); }
+    drawBody(ph.body, cx, cy, rx, ry, gy, t);
+    if (st >= 3) drawArms(ph.arms, cx, cy + (ph.body === 'pilz' ? ry * .3 : 0), ph.body === 'birne' ? rx * 1.05 : narrow, ry, t);
+    const fy = { birne: -.32, pilz: .22, tropfen: -.05 }[ph.body];
+    face = { x: cx, y: Math.round(cy + ry * (fy != null ? fy : -.25)) };
+    d = st === 2 ? 3 : 4;
+    if ((ph.body === 'gross' || ph.body === 'ei') && st >= 3) d = 3;
+    if (ph.body === 'pilz') d = st === 2 ? 2 : 3;
+    applyPattern(pattern, cx, cy, narrow, ry, top, ph.seed, face);
+    applyScheme(ph.scheme, cx, cy, rx, ry, top, gy);
+  }
+  const pal = {
+    1: ph.scheme === 'metallic' ? { base: css(C1), light: css(mix(C1, .6)), dark: css(mix(C1, -.5)) } : palOf(C1),
+    2: palOf(C2), 3: palOf([236, 226, 200]), 5: palOf(mix(C1, -.25)), 6: palOf(hsl(ph.h2, ph.s * .7, 86)),
+    7: palOf([255, 150, 50]), 8: palOf([255, 214, 70]), 9: palOf([111, 207, 79]),
+    16: palOf(mixRGB(C1, C2, .5)), 17: palOf(C2), 18: palOf(hsl(ph.h2, ph.s, Math.max(20, ph.l - 28))), 19: palOf([248, 246, 240]),
+    20: palOf([163, 36, 58]), 21: palOf([255, 154, 213]), 22: palOf(mix(C1, .6)), 23: palOf(mix(C1, -.45)),
+  };
+  RAINBOW.forEach((c, i) => pal[10 + i] = palOf(c));
+  paint(pal);
+
+  // ---- Gesicht ----
+  const c = face.x, ey = face.y, big = st >= 2;
+  const eyeCol = muts.includes('schatten') ? '#ff3b3b' : OUT;
+  const closed = A.eyesClosed || A.blink;
+  const eyes = muts.includes('zyklop') ? 'zyklop' : muts.includes('drittesauge') ? 'drei' : ph.eyes;
+  const L = c - d - 2, Rr = c + d;               // 2 Pixel breite Augen: links ab L, rechts ab Rr
+  const three = fn => { fn(L - 1); fn(Rr); };     // 3 Pixel breite Augen
+  if (closed){
+    if (eyes === 'zyklop') rect(c - 2, ey + 1, 4, 1, eyeCol);
+    else { rect(L, ey + 1, 2, 1, eyeCol); rect(Rr, ey + 1, 2, 1, eyeCol); if (eyes === 'drei') rect(c - 1, ey - 3, 2, 1, eyeCol); }
+  } else if (eyes === 'zyklop'){
+    const z = st === 1 ? 2 : 3;
+    rect(c - z, ey - z + 1, z * 2, z * 2, eyeCol); rect(c - z + 1, ey - z + 2, z * 2 - 2, z * 2 - 2, '#ffffff'); rect(c - 1, ey, 2, 2, eyeCol);
+  } else if (eyes === 'gross' && big){
+    three(x => { rect(x, ey - 1, 3, 3, eyeCol); px(x, ey - 1, '#fff'); px(x + 1, ey - 1, '#fff'); });
+  } else if (eyes === 'muede'){
+    const lid = css(mix(C1, -.35));
+    for (const x of [L, Rr]){ rect(x, ey, 2, 1, lid); rect(x, ey + 1, 2, 1, eyeCol); }
+  } else if (eyes === 'sterne' && big){
+    three(x => { [[1, 0], [0, 1], [1, 1], [2, 1], [1, 2]].forEach(([a, b]) => px(x + a, ey - 1 + b, eyeCol)); px(x + 1, ey, '#ffe14a'); });
+  } else if (eyes === 'herz'){
+    three(x => sprite(SMALL_HEART, x, ey - 1, '#ff4d8d'));
+  } else if (eyes === 'kreuz'){
+    three(x => [[0, 0], [2, 0], [1, 1], [0, 2], [2, 2]].forEach(([a, b]) => px(x + a, ey - 1 + b, eyeCol)));
+  } else if (eyes === 'schlitz'){
+    three(x => { rect(x, ey - 1, 3, 3, '#ffd23f'); rect(x + 1, ey - 1, 1, 3, eyeCol); });
+  } else if (eyes === 'glubsch'){
+    const dx = A.still ? 1 : Math.round(1 + Math.sin(t * 1.7));
+    three(x => { rect(x - 1, ey - 2, 5, 5, OUT); rect(x, ey - 1, 3, 3, '#ffffff'); px(x + dx, ey, eyeCol); });
+  } else if (eyes === 'oval'){
+    for (const x of [L, Rr]){ rect(x, ey - 1, 2, 3, eyeCol); if (big) px(x, ey - 1, '#fff'); }
+  } else {
+    for (const x of [L, Rr]){ rect(x, ey, 2, 2, eyeCol); if (big) px(x, ey, '#fff'); }
+    if (eyes === 'drei'){ rect(c - 1, ey - 4, 2, 2, eyeCol); if (big) px(c - 1, ey - 4, '#fff'); }
+  }
+  if (eyes === 'boese' && !closed){ px(L, ey - 2, OUT); px(L + 1, ey - 1, OUT); px(Rr + 1, ey - 2, OUT); px(Rr, ey - 1, OUT); }
+  const my = ey + 3 + (st >= 3 ? 1 : 0) + (eyes === 'glubsch' ? 1 : 0);
+  const mouth = A.mouthOpen ? 'offen' : ph.mouth;
+  if (mouth === 'offen'){ rect(c - 2, my, 4, 2, OUT); rect(c - 1, my + 1, 2, 1, '#ff6f91'); }
+  else if (mouth === 'laecheln'){ px(c - 3, my, OUT); rect(c - 2, my + 1, 4, 1, OUT); px(c + 2, my, OUT); }
+  else if (mouth === 'zaehne'){ rect(c - 2, my, 4, 1, OUT); px(c - 2, my + 1, '#ffffff'); px(c + 1, my + 1, '#ffffff'); }
+  else if (mouth === 'traurig'){ px(c - 2, my + 1, OUT); rect(c - 1, my, 2, 1, OUT); px(c + 1, my + 1, OUT); }
+  else if (mouth === 'katze'){ [[-3, 0], [-2, 1], [-1, 0], [0, 0], [1, 1], [2, 0]].forEach(([a, b]) => px(c + a, my + b, OUT)); }
+  else if (mouth === 'zunge'){ rect(c - 2, my, 4, 1, OUT); rect(c - 1, my + 1, 2, 1, '#ff6f91'); px(c, my + 2, '#d94f7a'); px(c - 1, my + 2, '#ff6f91'); }
+  else if (mouth === 'grinsen'){ rect(c - 3, my, 6, 3, OUT); rect(c - 2, my + 1, 4, 1, '#ffffff'); }
+  else if (mouth === 'o'){ rect(c - 1, my, 2, 2, OUT); }
+  else if (mouth === 'schnabel'){ rect(c - 2, my - 1, 4, 1, '#ffa13c'); rect(c - 1, my, 2, 1, '#ff8a1c'); px(c - 2, my, OUT); px(c + 1, my, OUT); rect(c - 1, my + 1, 2, 1, OUT); }
+  else if (mouth === 'fangzahn'){ rect(c - 2, my, 4, 1, OUT); px(c + 2, my - 1, OUT); px(c - 1, my + 1, '#ffffff'); }
+  else rect(c - 1, my, 2, 1, OUT);
+  if (mouth === 'katze' || ph.eyes === 'gross' || ph.eyes === 'herz'){ rect(L - 2, ey + 2, 2, 1, '#ff8fb3'); rect(Rr + 2, ey + 2, 2, 1, '#ff8fb3'); }
+  if ((ph.eyes === 'muede' || ph.mouth === 'traurig') && !closed && !A.still){ const p = (t % 4) / 4; if (p < .5) px(L, ey + 2 + Math.floor(p * 10), '#8fd8ff'); }
+
+  // ---- Extras der Endform (vorne) ----
+  if (st >= 4){
+    const bob = A.still ? 0 : Math.round(Math.sin(t * 2.5));
+    if (ph.extra === 'heiligenschein'){
+      const hy = top - 5 + bob; const seen = new Set();
+      for (let a = 0; a < Math.PI * 2; a += .12){ const x = Math.round(c + Math.cos(a) * 6 - .5), y = Math.round(hy + Math.sin(a) * 1.6); const k = x + ',' + y; if (seen.has(k)) continue; seen.add(k); px(x, y, '#ffe66b'); }
+    } else if (ph.extra === 'wolke'){
+      const yc = Math.max(0, top - 15 + bob);
+      sprite2(CLOUD, c - 8, yc, { o: OUT, w: '#e8eef5', g: '#b9c4d2' });
+      if (!A.still && Math.random() < .08) spawn('drop', c - 5 + Math.random() * 10, yc + 8, 0, 18, .6, '#8fd8ff');
+    } else if (ph.extra === 'krone'){
+      sprite2(CROWN, c - 6, top - 4, { o: OUT, y: '#ffd84a', r: '#ff4d6d' });
+    } else if (ph.extra === 'zauberhut'){
+      sprite2(ZHAT, c - 6, Math.max(0, top - 7), { o: OUT, p: '#6b4bd6', y: '#ffd84a' });
+    } else if (ph.extra === 'herzorbit'){
+      for (let k = 0; k < 2; k++){ const a = (A.still ? .6 : t * 2) + k * Math.PI; sprite(SMALL_HEART, Math.round(c + Math.cos(a) * (rx + 3) - 1.5), Math.round(cy - ry * .2 + Math.sin(a) * 3), '#ff6fae'); }
+    } else if (ph.extra === 'aura' && !A.still && Math.random() < .35){
+      spawn('ember', cx + (Math.random() - .5) * 2 * rx, cy + (Math.random() - .3) * ry, 0, -10 - Math.random() * 6, .8, Math.random() < .5 ? '#ff5a3c' : '#ffb03c');
+    } else if (ph.extra === 'blitzaura' && !A.still && Math.random() < .25){
+      spawn('bolt', cx + (Math.random() - .5) * 2 * (rx + 3), cy + (Math.random() - .5) * 2 * ry, 0, 0, .25, '#ffe14a');
+    }
+  }
+  if ((muts.includes('gold') || ph.shiny) && !A.still && Math.random() < .06) spawn('spark', cx + (Math.random() - .5) * 2 * rx, cy + (Math.random() - .5) * 2 * ry, 0, -3, .6, '#fff6c2');
+}
+function drawParts(dt){
+  for (let i = parts.length - 1; i >= 0; i--){
+    const p = parts[i]; p.life -= dt;
+    if (p.life <= 0){ parts.splice(i, 1); continue; }
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    if (p.kind === 'shard' || p.kind === 'pix' || p.kind === 'drop') p.vy += 40 * dt;
+    const c = css(p.color);
+    if (p.kind === 'heart') sprite(HEART, p.x, p.y, c);
+    else if (p.kind === 'bang'){ rect(p.x, p.y, 1, 3, c); px(p.x, p.y + 4, c); }
+    else if (p.kind === 'shard'){ rect(p.x, p.y, 2, 2, c); px(p.x + 1, p.y + 1, OUT); }
+    else if (p.kind === 'spark'){ px(p.x, p.y, c); if (p.life > p.max / 2){ px(p.x - 1, p.y, c); px(p.x + 1, p.y, c); px(p.x, p.y - 1, c); px(p.x, p.y + 1, c); } }
+    else if (p.kind === 'bolt'){ px(p.x, p.y, c); px(p.x + 1, p.y + 1, c); px(p.x, p.y + 2, c); }
+    else if (p.kind === 'ember'){ if (p.life > p.max * .3) px(p.x, p.y, c); }
+    else px(p.x, p.y, c);
+  }
+}
+
+/* ---------- Porträt (für Stammbaum) ---------- */
+function portrait(ph, st, scale){
+  M.fill(0); lx.globalCompositeOperation = 'source-over'; lx.globalAlpha = 1; lx.clearRect(0, 0, W, H);
+  const A = { ox: 0, oy: 0, sq: 0, still: true };
+  if (st === 0) drawEgg(0, ph, 0, 0, A); else drawCreature(0, ph, st, A);
+  if ((ph.muts || []).includes('geist')){ lx.globalCompositeOperation = 'destination-in'; lx.fillStyle = 'rgba(0,0,0,.62)'; lx.fillRect(0, 0, W, H); lx.globalCompositeOperation = 'source-over'; }
+  const c = document.createElement('canvas'); c.width = W * scale; c.height = H * scale;
+  const g = c.getContext('2d'); g.imageSmoothingEnabled = false; g.drawImage(lo, 0, 0, c.width, c.height);
+  return c;
+}
+
+
+
+const SLOT_NAMES = { body: 'Körper', top: 'Kopf', eyes: 'Augen', mouth: 'Mund', pattern: 'Muster', scheme: 'Farbschema', tail: 'Schwanz', arms: 'Arme', extra: 'Extra' };
+const SPECIAL = { gross: 'Groß', none: '–', punkt: 'Knopfaugen', o: 'O-Mund', katze: 'Katze', geisterform: 'Geist' };
+const pretty = v => SPECIAL[v] || (v.replace(/ae/g, 'ä').replace(/oe/g, 'ö').replace(/ue/g, 'ü').replace(/^./, c => c.toUpperCase()));
+const star = p => p && p.shiny ? '★ ' : '';
+let data = null, filter = 'all', oldFirst = false;
+
+function card(a){
+  const el = document.createElement('div');
+  const muts = (a.pheno && a.pheno.muts) || [];
+  el.className = 'card' + (a.pheno && a.pheno.shiny ? ' shiny' : '');
+  el.appendChild(portrait(a.pheno, 4, 2));
+  el.insertAdjacentHTML('beforeend', `<div class="g">GEN ${a.gen}</div><div class="nm">${esc(star(a.pheno) + (a.name || 'Namenlos'))}</div><div class="e">${a.total} Emotes</div>
+    <div class="badges">${a.pheno && a.pheno.shiny ? '<span class="badge">★</span>' : ''}${muts.length ? '<span class="badge m">M</span>' : ''}</div>`);
+  el.onclick = () => openModal(a, 4);
+  return el;
+}
+function openModal(a, st){
+  const box = $('mbox'); box.innerHTML = '<button class="close" aria-label="Schließen">×</button>';
+  box.appendChild(portrait(a.pheno, st, 5));
+  const ph = a.pheno || {}, muts = ph.muts || [];
+  const parts = Object.keys(SLOT_NAMES).filter(k => ph[k]).map(k => `<span>${SLOT_NAMES[k]}</span><span>${pretty(ph[k])}</span>`).join('');
+  box.insertAdjacentHTML('beforeend', `<div style="flex:1;min-width:220px">
+    <div class="tag" style="color:var(--gold);font-size:9px;margin-bottom:10px">GEN ${a.gen}${a.alive ? ' · LEBT' : ''}</div>
+    <h3>${esc(star(ph) + (a.name || 'Namenlos'))}</h3>
+    <div class="info">
+      <b>${a.total}</b> Emotes${a.alive ? ' · ' + CONFIG.stageNames[st] : ''}<br>
+      Top-Spender: <b>${esc(a.feeder || '–')}</b><br>
+      Lieblings-Emote: <b>${esc(a.emote || '–')}</b><br>
+      ${a.date ? 'Ins Stammbuch: <b>' + a.date + '</b><br>' : ''}
+      ${ph.shiny ? '<span style="color:var(--gold)">★ Schillerndes Exemplar</span><br>' : ''}
+      ${muts.length ? 'Mutation: <b style="color:var(--pink)">' + muts.map(m => MUTATIONS[m] || m).join(', ') + '</b><br>' : ''}
+    </div>
+    ${parts ? '<div class="traits">' + parts + '</div>' : ''}</div>`);
+  box.querySelector('.close').onclick = closeModal;
+  $('modal').classList.add('on');
+}
+function closeModal(){ $('modal').classList.remove('on'); }
+$('modal').onclick = e => { if (e.target.id === 'modal') closeModal(); };
+addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+function renderGrid(){
+  const g = $('grid'); g.innerHTML = '';
+  let list = (data.ancestors || []).slice();
+  if (filter === 'shiny') list = list.filter(a => a.pheno && a.pheno.shiny);
+  if (filter === 'mut') list = list.filter(a => a.pheno && (a.pheno.muts || []).length);
+  list.sort((a, b) => oldFirst ? a.gen - b.gen : b.gen - a.gen);
+  if (!list.length){ g.innerHTML = `<div class="empty" style="grid-column:1/-1">${(data.ancestors || []).length ? 'Keine passenden Generationen.' : 'Noch keine Vorfahren –<br>die erste Kreatur lebt noch!'}</div>`; return; }
+  list.forEach(a => g.appendChild(card(a)));
+}
+document.querySelectorAll('#filters button').forEach(b => b.onclick = () => {
+  if (b.dataset.f === 'old'){ oldFirst = !oldFirst; b.classList.toggle('on', oldFirst); }
+  else { filter = b.dataset.f; document.querySelectorAll('#filters button').forEach(x => { if (x.dataset.f !== 'old') x.classList.toggle('on', x === b); }); }
+  renderGrid();
+});
+
+// lebende Kreatur animiert
+const cvx = $('cv'); cvx.width = W * SC; cvx.height = H * SC;
+function live(){
+  const c = data.current; if (!c) return;
+  const t = now();
+  if (t > nextBlink){ blinkUntil = t + .12; nextBlink = t + 2.5 + Math.random() * 3; }
+  M.fill(0); lx.globalCompositeOperation = 'source-over'; lx.clearRect(0, 0, W, H);
+  S.total = c.total;
+  if (c.stage === 0) drawEgg(t, c.pheno, 0, 0, { still: false });
+  else {
+    drawCreature(t, c.pheno, c.stage, { ox: 0, oy: Math.sin(t * 3) > .4 ? -1 : 0, sq: 0, blink: t < blinkUntil });
+    if ((c.pheno.muts || []).includes('geist')){ lx.globalCompositeOperation = 'destination-in'; lx.fillStyle = 'rgba(0,0,0,.62)'; lx.fillRect(0, 0, W, H); lx.globalCompositeOperation = 'source-over'; }
+  }
+  drawParts(1 / 60);
+  const g = cvx.getContext('2d'); g.imageSmoothingEnabled = false; g.clearRect(0, 0, cvx.width, cvx.height); g.drawImage(lo, 0, 0, cvx.width, cvx.height);
+  requestAnimationFrame(live);
+}
+
+async function start(){
+  try {
+    const r = await fetch('stammbaum.json?v=' + Date.now(), { cache: 'no-store' });
+    data = await r.json();
+  } catch (e) { $('sub').textContent = 'Stammbaum konnte nicht geladen werden.'; return; }
+  CONFIG.channel = data.channel || CONFIG.channel;
+  const ch = esc(CONFIG.channel);
+  $('sub').innerHTML = `Die Emote-Kreaturen von <a href="https://twitch.tv/${ch}" target="_blank" rel="noopener">${ch}</a><br>Stand: ${esc(data.exported || '–')}`;
+  document.title = `Stammbaum – ${CONFIG.channel}`;
+  const anc = data.ancestors || [], c = data.current;
+  if (c){
+    $('now').style.display = 'flex';
+    $('nowName').textContent = star(c.pheno) + (c.name || '???');
+    const next = c.stage < 4 ? CONFIG.stages[c.stage + 1] : CONFIG.stages[4] + 2000;
+    $('nowInfo').innerHTML = `Generation <b>${c.gen}</b> · <b>${CONFIG.stageNames[c.stage]}</b><br><b>${c.total}</b> / ${next} Emotes<br>Top-Spender: <b>${esc(c.feeder || '–')}</b><br>Lieblings-Emote: <b>${esc(c.emote || '–')}</b>`;
+    $('now').style.cursor = 'pointer';
+    $('now').onclick = () => openModal(Object.assign({ alive: true }, c), c.stage);
+    requestAnimationFrame(live);
+  }
+  const total = anc.reduce((a, x) => a + (x.total || 0), 0) + (c ? c.total : 0);
+  const stats = [[anc.length + (c ? 1 : 0), 'Generationen'], [anc.filter(a => a.pheno && a.pheno.shiny).length, 'Schillernde'], [anc.filter(a => a.pheno && (a.pheno.muts || []).length).length, 'Mutierte'], [total.toLocaleString('de-DE'), 'Emotes gesamt']];
+  $('stats').innerHTML = stats.map(([n, l]) => `<div class="stat px-box"><div class="n">${n}</div><div class="l">${l}</div></div>`).join('');
+  $('foot').innerHTML = `Füttere die aktuelle Kreatur live mit Emotes auf <a href="https://twitch.tv/${ch}" target="_blank" rel="noopener">twitch.tv/${ch}</a>`;
+  renderGrid();
+}
+start();
+})();
+</script>
+</body>
+</html>
