@@ -72,7 +72,7 @@
 <script>
 (() => {
 'use strict';
-const CONFIG = { channel: 'scroplex', scale: 4, stages: [0, 20, 125, 500, 1500], stageNames: ['Ei', 'Larve', 'Jungtier', 'Ausgewachsen', 'Endform'] };
+const CONFIG = { channel: 'scroplex', scale: 4, stages: [0, 20, 70, 100, 150], stageNames: ['Ei', 'Larve', 'Jungtier', 'Ausgewachsen', 'Endform'] };
 const W = 48, H = 48, SC = CONFIG.scale;
 let S = { total: 0 }, evo = null, shown = 0;
 /* ======================= GENE & EMOTES ======================= */
@@ -658,7 +658,7 @@ async function start(){
   if (c){
     $('now').style.display = 'flex';
     $('nowName').textContent = star(c.pheno) + (c.name || '???');
-    const next = c.stage < 4 ? CONFIG.stages[c.stage + 1] : CONFIG.stages[4] + 1000;
+    const next = c.stage < 4 ? CONFIG.stages[c.stage + 1] : CONFIG.stages[4] + 50;
     $('nowInfo').innerHTML = `Generation <b>${c.gen}</b> · <b>${CONFIG.stageNames[c.stage]}</b><br><b>${c.total}</b> / ${next} Emotes<br>Top-Spender: <b>${esc(c.feeder || '–')}</b><br>Lieblings-Emote: <b>${esc(c.emote || '–')}</b>`;
     $('now').style.cursor = 'pointer';
     $('now').onclick = () => openModal(Object.assign({ alive: true }, c), c.stage);
